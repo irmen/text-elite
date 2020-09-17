@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from math import sqrt
 
 
 @dataclass
@@ -32,6 +33,8 @@ commodities = [
 ]
 
 unitnames = ("t", "kg", "g")
+govnames = ("Anarchy", "Feudal", "Multi-gov", "Dictatorship", "Communist", "Confederacy", "Democracy", "Corporate State")
+econnames = ("Rich Ind", "Average Ind", "Poor Ind", "Mainly Ind", "Mainly Agri", "Rich Agri", "Average Agri", "Poor Agri");
 
 
 class Market:
@@ -73,8 +76,7 @@ class Planet:
         ("tropical", "dense", "rain", "impenetrable", "exuberant"),
         ("funny", "wierd", "unusual", "strange", "peculiar"),
         ("frequent", "occasional", "unpredictable", "dreadful", "deadly"),
-        ("\x82 \x81 for \x8A", "\x82 \x81 for \x8A and \x8A", "\x88 by \x89", "\x82 \x81 for \x8A but \x88 by \x89",
-         "a\x90 \x91"),
+        ("\x82 \x81 for \x8A", "\x82 \x81 for \x8A and \x8A", "\x88 by \x89", "\x82 \x81 for \x8A but \x88 by \x89", "a\x90 \x91"),
         ("\x9B", "mountain", "edible", "tree", "spotted"),
         ("\x9F", "\xA0", "\x87oid", "\x93", "\x92"),
         ("ancient", "exceptional", "eccentric", "ingrained", "\x95"),
@@ -100,6 +102,7 @@ class Planet:
         self.population = 0
         self.productivity = 0
         self.radius = 0
+        self.goatsoup_seed = (0, 0, 0, 0)
         self.goatsoup_rnd = [0, 0, 0, 0]
         self.name = ""
 
@@ -119,6 +122,8 @@ class Planet:
 
     def goat_soup(self) -> str:
         result = ""
+        self.goatsoup_rnd = list(self.goatsoup_seed)
+
         def soup(source: str) -> None:
             nonlocal result
             for c in source:
@@ -159,6 +164,20 @@ class Planet:
         soup("\x8F is \x97.")
         return result
 
+    def display(self, compressed: bool = False) -> None:
+        if compressed:
+            print(self.name, " TL:", self.techlev + 1, " ", econnames[self.economy], " ", govnames[self.govtype], end="")
+        else:
+            print("\nSystem: ", self.name)
+            print("Position: ", self.x, ",", self.y)
+            print("Economy:", self.economy, econnames[self.economy])
+            print("Government:", self.govtype, govnames[self.govtype])
+            print("Tech Level:", self.techlev + 1)
+            print("Turnover:", self.productivity)
+            print("Radius:", self.radius)
+            print("Population: %d Billion" % (self.population >> 3))
+            print(self.goat_soup())
+
 
 class Galaxy:
     GALSIZE = 256
@@ -176,12 +195,10 @@ class Galaxy:
         # init seed for galaxy 1
         self.number = galaxynum
         self.seed = [self.base0, self.base1, self.base2]
-        for galcount in range(galaxynum-1):
+        for galcount in range(galaxynum - 1):
             self.nextgalaxy()
         # Put galaxy data into array of structures
-        self.galaxy = []
-        for syscount in range(Galaxy.GALSIZE):
-            self.galaxy.append(self.makesystem())
+        self.galaxy = [self.makesystem() for _ in range(Galaxy.GALSIZE)]
 
     def nextgalaxy(self):
         # Apply to base seed; once for galaxy 2
@@ -216,10 +233,10 @@ class Galaxy:
         thissys.productivity = ((thissys.economy ^ 7) + 3) * (thissys.govtype + 4)
         thissys.productivity *= thissys.population * 8
         thissys.radius = 256 * (((self.seed[2] >> 8) & 15) + 11) + thissys.x
-        thissys.goatsoup_rnd = [self.seed[1] & 0xFF,
-                                self.seed[1] >> 8,
-                                self.seed[2] & 0xFF,
-                                self.seed[2] >> 8]
+        thissys.goatsoup_seed = (self.seed[1] & 0xFF,
+                                 self.seed[1] >> 8,
+                                 self.seed[2] & 0xFF,
+                                 self.seed[2] >> 8)
 
         # Always four iterations of random number
         pair1 = 2 * ((self.seed[2] >> 8) & 31)
@@ -237,14 +254,14 @@ class Galaxy:
                      self.pairs[pair2 + 1],
                      self.pairs[pair3],
                      self.pairs[pair3 + 1]]
-        if longnameflag:   # bit 6 of ORIGINAL w0 flags a four-pair name
+        if longnameflag:  # bit 6 of ORIGINAL w0 flags a four-pair name
             namechars.append(self.pairs[pair4])
-            namechars.append(self.pairs[pair4+1])
+            namechars.append(self.pairs[pair4 + 1])
         thissys.name = "".join(namechars).replace(".", "")
         return thissys
 
     def tweakseed(self) -> None:
-        temp = (self.seed[0])+(self.seed[1])+(self.seed[2])   # 2 byte aritmetic
+        temp = (self.seed[0]) + (self.seed[1]) + (self.seed[2]) & 65535  # 2 byte aritmetic
         self.seed[0] = self.seed[1]
         self.seed[1] = self.seed[2]
         self.seed[2] = temp
@@ -280,6 +297,23 @@ class Galaxy:
                 market.quantity[idx] = 0  # force nonavailibility
         return market
 
+    def matchsys(self, name: str, currentplanet: int) -> int:
+        pnum = currentplanet
+        if name:
+            d = 9999
+            p = self.galaxy[currentplanet]
+            for idx, planet in enumerate(self.galaxy):
+                if planet.name.lower().startswith(name.lower()):
+                    if self.distance(planet, p) < d:
+                        d = self.distance(planet, p)
+                        p = planet
+                        pnum = idx
+        return pnum
+
+    def distance(self, a: Planet, b: Planet) -> int:
+        # separation between two planets
+        return int(4 * sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) / 4))
+
 
 class Trader:
     tradnames = [c.name for c in commodities]
@@ -296,29 +330,147 @@ class Trader:
         self.cash = 0.0
         self.lastrand = 0
         self.shipshold = [0 for _ in commodities]
+        self.holdspace = 0
 
     def mysrand(self, seed: int) -> None:
         self.lastrand = seed - 1
 
+    def randbyte(self) -> int:
+        return self.myrand() & 0xff
+
+    def myrand(self) -> int:
+        return 42       # TODO
+
     def parser(self, command: str) -> None:
-        # TODO
-        pass
+        cmd, _, arg = command.partition(" ")
+        funcs = {
+            "buy": self.do_buy,
+            "sell": self.do_sell,
+            "fuel": self.do_fuel,
+            "jump": self.do_jump,
+            "sneak": self.do_sneak,
+            "galhyp": self.do_galhyp,
+            "info": self.do_info,
+            "mkt": self.do_mkt,
+            "local": self.do_local,
+            "cash": self.do_cash,
+            "hold": self.do_hold,
+            "quit": self.do_quit,
+            "help": self.do_help,
+        }
+        for fname, func in funcs.items():
+            if fname.startswith(cmd):
+                func(arg)
+                break
+        else:
+            print("Bad command", cmd)
+
+    def do_buy(self, _):
+        raise NotImplementedError()     # TODO
+
+    def do_sell(self, _):
+        raise NotImplementedError()     # TODO
+
+    def do_fuel(self, _):
+        raise NotImplementedError()     # TODO
+
+    def do_jump(self, name: str) -> None:
+        planetnum = self.galax.matchsys(name, self.currentplanet)
+        if planetnum == self.currentplanet:
+            print("Bad jump")
+            return
+        current = self.galax.galaxy[self.currentplanet]
+        planet = self.galax.galaxy[planetnum]
+        d = self.galax.distance(planet, current)
+        if d > self.fuel:
+            print("Jump too far")
+            return
+        self.fuel -= d
+        self.currentplanet = planetnum
+        self.localmarket = self.galax.genmarket(self.randbyte(), planet)
+        planet.display(False)
+
+    def do_sneak(self, name: str) -> None:
+        fuelkeep = self.fuel
+        self.fuel = 666
+        self.do_jump(name)
+        self.fuel = fuelkeep
+
+    def do_galhyp(self, _):
+        galnum = self.galax.number + 1
+        if galnum == 9:
+            galnum = 1
+        self.galax = Galaxy(galnum)
+
+    def do_local(self, _):
+        current = self.galax.galaxy[self.currentplanet]
+        print("Galaxy number", self.galax.number)
+        for planet in self.galax.galaxy:
+            d = self.galax.distance(planet, current)
+            if d <= self.maxfuel:
+                if d <= self.fuel:
+                    print(" * ", end="")
+                else:
+                    print(" - ", end="")
+                planet.display(True)
+                print(" (%.1f LY)" % (d/10.0))
+
+    def do_quit(self, _):
+        raise SystemExit(0)
+
+    def do_mkt(self, _) -> None:
+        self.localmarket.display(self.shipshold)
+        print("\nFuel: %.1f" % (self.fuel/10.0), "      Holdspace :", self.holdspace, "t", end="");
+
+    def do_info(self, name: str) -> None:
+        planetnum = self.galax.matchsys(name, self.currentplanet)
+        self.galax.galaxy[planetnum].display(False)
+
+    def do_hold(self, size: str) -> None:
+        total = 0
+        hsize = int(size)
+        for i, c in enumerate(commodities):
+            if c.units == 0:
+                total += self.shipshold[i]
+        if total > hsize:
+            print("Hold too full")
+        else:
+            self.holdspace = hsize - total
+
+    def do_cash(self, cash: str) -> None:
+        self.cash += 10 * int(cash)  # cheat...
+
+    def do_help(self, _) -> None:
+        print("Commands are:")
+        print("Buy   tradegood ammount")
+        print("Sell  tradegood ammount")
+        print("Fuel  ammount    (buy ammount LY of fuel)")
+        print("Jump  planetname (limited by fuel)")
+        print("Sneak planetname (any distance - no fuel cost)")
+        print("Galhyp           (jumps to next galaxy)")
+        print("Info  planetname (prints info on system")
+        print("Mkt              (shows market prices)")
+        print("Local            (lists systems within 7 light years)")
+        print("Cash number      (alters cash - cheating!)")
+        print("Hold number      (change cargo bay)")
+        print("Quit or ^C       (exit)")
+        print("Help             (display this text)")
+        print("\nAbbreviations allowed eg. b fo 5 = Buy Food 5, m= Mkt")
 
     def mainloop(self) -> None:
-        print("\nWelcome to Text Elite 1.5.\n")
+        print("\nWelcome to Text Elite 1.5.")
         self.parser("hold 20")
         self.parser("cash +100")
         self.parser("help")
         while True:
-            print("\n\nCash: %.1f" % (self.cash / 10.0))
-            getcommand = input()
+            print("\nCash: %.1f" % (self.cash / 10.0))
+            getcommand = input("> ")
             if len(getcommand) == 0:
                 break
-            print(repr(getcommand))
             self.parser(getcommand)
 
 
-if __name__ == "__main__":
+def test():
     gx = Galaxy(1)
     assert gx.galaxy[Galaxy.numforLave].name == "LAVE"
     assert gx.galaxy[Galaxy.numforZaonce].name == "ZAONCE"
@@ -342,3 +494,8 @@ if __name__ == "__main__":
     assert t.localmarket.quantity == market.quantity
     assert t.localmarket.price == market.price
 
+
+if __name__ == "__main__":
+    test()
+    t = Trader()
+    t.mainloop()

@@ -35,8 +35,6 @@ AlienItems = len(commodities) - 1
 
 unitnames = ("t", "kg", "g")
 
-shipshold = [0 for _ in commodities]
-
 
 class Market:
     def __init__(self):
@@ -106,61 +104,67 @@ class PlanetDescriptions:
         ("ice", "mud", "Zero-G", "vacuum", "\xB1 ultra"),
         ("hockey", "cricket", "karate", "polo", "tennis")
     ]
-
-    rnd_seed = [10, 20, 30, 40]  # todo proper init
     pairs0 = "ABOUSEITILETSTONLONUTHNOALLEXEGEZACEBISOUSESARMAINDIREA.ERATENBERALAVETIEDORQUANTEISRION"
 
+    def __init__(self):
+        self.rnd_seed = [0, 0, 0, 0]
+
     def gen_rnd_number(self) -> int:
-        x: int = (PlanetDescriptions.rnd_seed[0] * 2) & 0xFF
-        a: int = x + PlanetDescriptions.rnd_seed[2]
-        if PlanetDescriptions.rnd_seed[0] > 127:
+        x: int = (self.rnd_seed[0] * 2) & 0xFF
+        a: int = x + self.rnd_seed[2]
+        if self.rnd_seed[0] > 127:
             a += 1
-        PlanetDescriptions.rnd_seed[0] = a & 0xFF
-        PlanetDescriptions.rnd_seed[2] = x
+        self.rnd_seed[0] = a & 0xFF
+        self.rnd_seed[2] = x
         a //= 256  # a = any carry left from above
-        x = PlanetDescriptions.rnd_seed[1]
-        a = (a + x + PlanetDescriptions.rnd_seed[3]) & 0xFF
-        PlanetDescriptions.rnd_seed[1] = a
-        PlanetDescriptions.rnd_seed[3] = x
+        x = self.rnd_seed[1]
+        a = (a + x + self.rnd_seed[3]) & 0xFF
+        self.rnd_seed[1] = a
+        self.rnd_seed[3] = x
         return a
 
-    def goat_soup(self, source: str, psy: PlanSys) -> None:
-        for c in source:
-            if c == '\x00':
-                break
-            elif c <= '\x80':
-                print(c, end="")
-            else:
-                if c <= '\xa4':
-                    rnd = self.gen_rnd_number()
-                    self.goat_soup(
-                        self.desc_list[ord(c) - 0x81][(rnd >= 0x33) + (rnd >= 0x66) + (rnd >= 0x99) + (rnd >= 0xCC)],
-                        psy)
+    def goat_soup(self, psy: PlanSys) -> str:
+        result = ""
+        self.rnd_seed = list(psy.goatsoupseed)
+        def soup(source: str) -> None:
+            nonlocal result
+            for c in source:
+                if c == '\x00':
+                    break
+                elif c <= '\x80':
+                    result += c
                 else:
-                    if c == '\xb0':
-                        # planet name
-                        print(psy.name.title(), end="")
-                    elif c == '\xb1':
-                        # planet name + ian
-                        name = psy.name.title()
-                        print(name[0], end="")
-                        for nn in name[1:]:
-                            if nn in ('E', 'I', '\0'):
-                                break
-                            print(nn, end="")
-                        print("ian", end="")
-                    elif c == '\xb2':
-                        # random name
-                        length = self.gen_rnd_number() & 3
-                        for i in range(length + 1):
-                            x = self.gen_rnd_number() & 0x3e
-                            if i == 0:
-                                print(self.pairs0[x], end="")
-                            else:
-                                print(self.pairs0[x].lower(), end="")
-                            print(self.pairs0[x + 1].lower(), end="")
+                    if c <= '\xa4':
+                        rnd = self.gen_rnd_number()
+                        soup(self.desc_list[ord(c) - 0x81][(rnd >= 0x33) + (rnd >= 0x66) + (rnd >= 0x99) + (rnd >= 0xCC)])
                     else:
-                        raise ValueError("bad char data", c)
+                        if c == '\xb0':
+                            # planet name
+                            result += psy.name.title()
+                        elif c == '\xb1':
+                            # planet name + ian
+                            name = psy.name.title()
+                            result += name[0]
+                            for nn in name[1:]:
+                                if nn in ('e', 'i', '\0'):
+                                    break
+                                result += nn
+                            result += "ian"
+                        elif c == '\xb2':
+                            # random name
+                            length = self.gen_rnd_number() & 3
+                            for i in range(length + 1):
+                                x = self.gen_rnd_number() & 0x3e
+                                if i == 0:
+                                    result += self.pairs0[x]
+                                else:
+                                    result += self.pairs0[x].lower()
+                                result += self.pairs0[x + 1].lower()
+                        else:
+                            raise ValueError("bad char data", c)
+
+        soup("\x8F is \x97.")
+        return result
 
 
 class Galaxy:
@@ -170,11 +174,16 @@ class Galaxy:
     base1 = 0x0248
     base2 = 0xB753  # Base seed for galaxy 1
     pairs = "..LEXEGEZACEBISOUSESARMAINDIREA.ERATENBERALAVETIEDORQUANTEISRION"
+    numforLave = 7  # Lave is 7th generated planet in galaxy one
+    numforZaonce = 129
+    numforDiso = 147
+    numforRied = 46
 
     def __init__(self, galaxynum: int):
         # init seed for galaxy 1
+        self.number = galaxynum
         self.seed = [self.base0, self.base1, self.base2]
-        for galcount in range(galaxynum):
+        for galcount in range(galaxynum-1):
             self.nextgalaxy()
         # Put galaxy data into array of structures
         self.galaxy = []
@@ -247,41 +256,6 @@ class Galaxy:
         self.seed[1] = self.seed[2]
         self.seed[2] = temp
 
-
-class InputParser:
-    tradnames = [c.name for c in commodities]
-
-    numforLave = 7  # Lave is 7th generated planet in galaxy one
-    numforZaonce = 129
-    numforDiso = 147
-    numforRied = 46
-    fuelcost = 2  # 0.2 CR/Light year
-    maxfuel = 70  # 7.0 LY tank
-
-    def __init__(self):
-        self.nativerand = True
-        self.getcommand = ""
-        self.mysrand(12345)  # ensure repeatability
-        self.galaxynum = 1
-        self.galax = Galaxy(1)
-        self.currentplanet = InputParser.numforLave
-        self.localmarket = self.genmarket(0x00, self.galax.galaxy[InputParser.numforLave])
-        self.fuel = InputParser.maxfuel
-        self.cash = 0.0
-        self.lastrand = 0
-
-    def mysrand(self, seed: int) -> None:
-        self.lastrand = seed - 1
-
-    def parser(self, command: str) -> None:
-        # TODO
-        pass
-
-    def buildgalaxy(self, galnum: int) -> None:
-        # TODO
-        g = Galaxy(galnum)
-        pass
-
     def genmarket(self, fluct: int, p: PlanSys) -> Market:
         # Prices and availabilities are influenced by the planet's economy type
         # (0-7) and a random "fluctuation" byte that was kept within the saved
@@ -311,6 +285,30 @@ class InputParser:
         market.quantity[AlienItems] = 0  # force nonavailibility
         return market
 
+
+class Trader:
+    tradnames = [c.name for c in commodities]
+
+    fuelcost = 2  # 0.2 CR/Light year
+    maxfuel = 70  # 7.0 LY tank
+
+    def __init__(self):
+        self.mysrand(12345)  # ensure repeatability
+        self.galax = Galaxy(1)
+        self.currentplanet = Galaxy.numforLave
+        self.localmarket = self.galax.genmarket(0x00, self.galax.galaxy[Galaxy.numforLave])
+        self.fuel = Trader.maxfuel
+        self.cash = 0.0
+        self.lastrand = 0
+        self.shipshold = [0 for _ in commodities]
+
+    def mysrand(self, seed: int) -> None:
+        self.lastrand = seed - 1
+
+    def parser(self, command: str) -> None:
+        # TODO
+        pass
+
     def mainloop(self) -> None:
         print("\nWelcome to Text Elite 1.5.\n")
         self.parser("hold 20")
@@ -325,8 +323,26 @@ class InputParser:
             self.parser(getcommand)
 
 
-main = InputParser()
-print("LAVE?", main.galax.galaxy[main.numforLave].name)
-print("DISO?", main.galax.galaxy[main.numforDiso].name)
-print("RIED?", main.galax.galaxy[main.numforRied].name)
-print("ZAONCE?", main.galax.galaxy[main.numforZaonce].name)
+if __name__ == "__main__":
+    gx = Galaxy(1)
+    assert gx.galaxy[Galaxy.numforLave].name == "LAVE"
+    assert gx.galaxy[Galaxy.numforZaonce].name == "ZAONCE"
+    assert gx.galaxy[Galaxy.numforRied].name == "RIEDQUAT"
+    assert gx.galaxy[Galaxy.numforDiso].name == "DISO"
+    lave = gx.galaxy[Galaxy.numforLave]
+    market = gx.genmarket(0, lave)
+    assert market.quantity[0] == 16
+    assert market.price[0] == 36
+    assert market.quantity[6] == 55
+    assert market.price[6] == 496
+    des = PlanetDescriptions()
+    assert des.goat_soup(gx.galaxy[Galaxy.numforLave]) == "Lave is most famous for its vast rain forests and the Lavian tree grub."
+    assert des.goat_soup(gx.galaxy[Galaxy.numforZaonce]) == "This planet is a tedious place."
+    assert des.goat_soup(gx.galaxy[Galaxy.numforRied]) == "This planet is most notable for its fabulous cuisine but beset by occasional civil war."
+    assert des.goat_soup(gx.galaxy[Galaxy.numforDiso]) == "This planet is mildly noted for its ancient Ma corn plantations but beset by frequent solar activity."
+    t = Trader()
+    assert t.galax.number == 1
+    assert t.currentplanet == Galaxy.numforLave
+    assert t.localmarket.quantity == market.quantity
+    assert t.localmarket.price == market.price
+

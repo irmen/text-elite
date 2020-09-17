@@ -31,8 +31,6 @@ commodities = [
     TradeGood(0x35, +0x0F, 0xC0, 0x07, 0, "Alien Items")
 ]
 
-AlienItems = len(commodities) - 1
-
 unitnames = ("t", "kg", "g")
 
 
@@ -51,20 +49,7 @@ class Market:
             print()
 
 
-class PlanSys:
-    x = 0
-    y = 0
-    economy = 0
-    govtype = 0
-    techlev = 0
-    population = 0
-    productivity = 0
-    radius = 0
-    goatsoupseed = (0, 0, 0, 0)
-    name = ""
-
-
-class PlanetDescriptions:
+class Planet:
     desc_list = [
         ("fabled", "notable", "well known", "famous", "noted"),
         ("very", "mildly", "most", "reasonably", ""),
@@ -107,25 +92,33 @@ class PlanetDescriptions:
     pairs0 = "ABOUSEITILETSTONLONUTHNOALLEXEGEZACEBISOUSESARMAINDIREA.ERATENBERALAVETIEDORQUANTEISRION"
 
     def __init__(self):
-        self.rnd_seed = [0, 0, 0, 0]
+        self.x = 0
+        self.y = 0
+        self.economy = 0
+        self.govtype = 0
+        self.techlev = 0
+        self.population = 0
+        self.productivity = 0
+        self.radius = 0
+        self.goatsoup_rnd = [0, 0, 0, 0]
+        self.name = ""
 
     def gen_rnd_number(self) -> int:
-        x: int = (self.rnd_seed[0] * 2) & 0xFF
-        a: int = x + self.rnd_seed[2]
-        if self.rnd_seed[0] > 127:
+        x: int = (self.goatsoup_rnd[0] * 2) & 0xFF
+        a: int = x + self.goatsoup_rnd[2]
+        if self.goatsoup_rnd[0] > 127:
             a += 1
-        self.rnd_seed[0] = a & 0xFF
-        self.rnd_seed[2] = x
+        self.goatsoup_rnd[0] = a & 0xFF
+        self.goatsoup_rnd[2] = x
         a //= 256  # a = any carry left from above
-        x = self.rnd_seed[1]
-        a = (a + x + self.rnd_seed[3]) & 0xFF
-        self.rnd_seed[1] = a
-        self.rnd_seed[3] = x
+        x = self.goatsoup_rnd[1]
+        a = (a + x + self.goatsoup_rnd[3]) & 0xFF
+        self.goatsoup_rnd[1] = a
+        self.goatsoup_rnd[3] = x
         return a
 
-    def goat_soup(self, psy: PlanSys) -> str:
+    def goat_soup(self) -> str:
         result = ""
-        self.rnd_seed = list(psy.goatsoupseed)
         def soup(source: str) -> None:
             nonlocal result
             for c in source:
@@ -140,10 +133,10 @@ class PlanetDescriptions:
                     else:
                         if c == '\xb0':
                             # planet name
-                            result += psy.name.title()
+                            result += self.name.title()
                         elif c == '\xb1':
                             # planet name + ian
-                            name = psy.name.title()
+                            name = self.name.title()
                             result += name[0]
                             for nn in name[1:]:
                                 if nn in ('e', 'i', '\0'):
@@ -205,8 +198,8 @@ class Galaxy:
         temp = x & 128
         return (2 * (x & 127)) + (temp >> 7)
 
-    def makesystem(self) -> PlanSys:
-        thissys = PlanSys()
+    def makesystem(self) -> Planet:
+        thissys = Planet()
         longnameflag = self.seed[0] & 64
         thissys.x = self.seed[1] >> 8
         thissys.y = self.seed[0] >> 8
@@ -223,10 +216,10 @@ class Galaxy:
         thissys.productivity = ((thissys.economy ^ 7) + 3) * (thissys.govtype + 4)
         thissys.productivity *= thissys.population * 8
         thissys.radius = 256 * (((self.seed[2] >> 8) & 15) + 11) + thissys.x
-        thissys.goatsoupseed = (self.seed[1] & 0xFF,
+        thissys.goatsoup_rnd = [self.seed[1] & 0xFF,
                                 self.seed[1] >> 8,
                                 self.seed[2] & 0xFF,
-                                self.seed[2] >> 8)
+                                self.seed[2] >> 8]
 
         # Always four iterations of random number
         pair1 = 2 * ((self.seed[2] >> 8) & 31)
@@ -256,7 +249,7 @@ class Galaxy:
         self.seed[1] = self.seed[2]
         self.seed[2] = temp
 
-    def genmarket(self, fluct: int, p: PlanSys) -> Market:
+    def genmarket(self, fluct: int, p: Planet) -> Market:
         # Prices and availabilities are influenced by the planet's economy type
         # (0-7) and a random "fluctuation" byte that was kept within the saved
         # commander position to keep the market prices constant over gamesaves.
@@ -282,7 +275,9 @@ class Galaxy:
             q = commodities[i].baseprice + changing + product
             q &= 0xff
             market.price[i] = q * 4
-        market.quantity[AlienItems] = 0  # force nonavailibility
+        for idx, c in enumerate(commodities):
+            if c.name == "Alien Items":
+                market.quantity[idx] = 0  # force nonavailibility
         return market
 
 
@@ -335,11 +330,12 @@ if __name__ == "__main__":
     assert market.price[0] == 36
     assert market.quantity[6] == 55
     assert market.price[6] == 496
-    des = PlanetDescriptions()
-    assert des.goat_soup(gx.galaxy[Galaxy.numforLave]) == "Lave is most famous for its vast rain forests and the Lavian tree grub."
-    assert des.goat_soup(gx.galaxy[Galaxy.numforZaonce]) == "This planet is a tedious place."
-    assert des.goat_soup(gx.galaxy[Galaxy.numforRied]) == "This planet is most notable for its fabulous cuisine but beset by occasional civil war."
-    assert des.goat_soup(gx.galaxy[Galaxy.numforDiso]) == "This planet is mildly noted for its ancient Ma corn plantations but beset by frequent solar activity."
+    assert market.quantity[16] == 0
+    assert market.price[16] == 512
+    assert gx.galaxy[Galaxy.numforLave].goat_soup() == "Lave is most famous for its vast rain forests and the Lavian tree grub."
+    assert gx.galaxy[Galaxy.numforZaonce].goat_soup() == "This planet is a tedious place."
+    assert gx.galaxy[Galaxy.numforRied].goat_soup() == "This planet is most notable for its fabulous cuisine but beset by occasional civil war."
+    assert gx.galaxy[Galaxy.numforDiso].goat_soup() == "This planet is mildly noted for its ancient Ma corn plantations but beset by frequent solar activity."
     t = Trader()
     assert t.galax.number == 1
     assert t.currentplanet == Galaxy.numforLave

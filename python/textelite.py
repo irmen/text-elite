@@ -1,4 +1,6 @@
+from typing import List
 from dataclasses import dataclass
+import random
 from math import sqrt
 
 
@@ -317,29 +319,21 @@ class Galaxy:
 
 class Trader:
     tradnames = [c.name for c in commodities]
-
     fuelcost = 2  # 0.2 CR/Light year
     maxfuel = 70  # 7.0 LY tank
 
     def __init__(self):
-        self.mysrand(12345)  # ensure repeatability
+        random.seed(12345)
         self.galax = Galaxy(1)
         self.currentplanet = Galaxy.numforLave
         self.localmarket = self.galax.genmarket(0x00, self.galax.galaxy[Galaxy.numforLave])
         self.fuel = Trader.maxfuel
         self.cash = 0.0
-        self.lastrand = 0
         self.shipshold = [0 for _ in commodities]
         self.holdspace = 0
 
-    def mysrand(self, seed: int) -> None:
-        self.lastrand = seed - 1
-
     def randbyte(self) -> int:
-        return self.myrand() & 0xff
-
-    def myrand(self) -> int:
-        return 42       # TODO
+        return random.randint(0, 255)
 
     def parser(self, command: str) -> None:
         cmd, _, arg = command.partition(" ")
@@ -365,14 +359,34 @@ class Trader:
         else:
             print("Bad command", cmd)
 
-    def do_buy(self, _):
+    def do_buy(self, what: str) -> None:
+        goods, amount = what.split()
+        amount = int(amount)
+        if amount == 0:
+            amount = 1
+        i = self.stringmatch(goods, self.tradnames)
+        if i <= 0:
+            print("Unknown trade good")
+        else:
+            i -= 1
+            t = self.gamebuy(i, amount)
+            if t == 0:
+                print("Can't buy any ", end="")
+            else:
+                print("Buying", t, unitnames[commodities[i].units], "of ", end="")
+            print(self.tradnames[i])
+
+    def do_sell(self, what: str) -> None:
+        amount, goods = what.split()
         raise NotImplementedError()     # TODO
 
-    def do_sell(self, _):
-        raise NotImplementedError()     # TODO
-
-    def do_fuel(self, _):
-        raise NotImplementedError()     # TODO
+    def do_fuel(self, amount: str) -> None:
+        # buy an amount of fuel
+        f = self.gamefuel(10*int(amount))
+        if f == 0:
+            print("Can't buy any fuel")
+        else:
+            print("Buying %.1f LY fuel" % (f/10.0))
 
     def do_jump(self, name: str) -> None:
         planetnum = self.galax.matchsys(name, self.currentplanet)
@@ -457,6 +471,16 @@ class Trader:
         print("Help             (display this text)")
         print("\nAbbreviations allowed eg. b fo 5 = Buy Food 5, m= Mkt")
 
+    def gamefuel(self, f: int) -> int:
+        if f+self.fuel > self.maxfuel:
+            f = self.maxfuel-self.fuel
+        if self.fuelcost > 0:
+            if(f*self.fuelcost>self.cash):
+                f=int(self.cash/self.fuelcost)
+        self.fuel += f
+        self.cash -= self.fuelcost * f
+        return f
+
     def mainloop(self) -> None:
         print("\nWelcome to Text Elite 1.5.")
         self.parser("hold 20")
@@ -468,6 +492,29 @@ class Trader:
             if len(getcommand) == 0:
                 break
             self.parser(getcommand)
+
+    def stringmatch(self, s: str, names: List[str]) -> int:
+        for idx, name in enumerate(names):
+            if name.lower().startswith(s.lower()):
+                return idx+1
+        return 0
+
+    def gamebuy(self, i: int, a: int) -> int:
+        # Try to buy ammount a  of good i  Return ammount bought
+        # Cannot buy more than is availble, can afford, or will fit in hold
+        if self.cash < 0:
+            t = 0
+        else:
+            t = min(self.localmarket.quantity[i], a)
+            if commodities[i].units == 0:
+                t = min(self.holdspace, t)
+            t = min(t, int(self.cash/self.localmarket.price[i]))
+        self.shipshold[i] += t
+        self.localmarket.quantity[i] -= t
+        self.cash -= t*self.localmarket.price[i]
+        if commodities[i].units == 0:
+            self.holdspace -= t
+        return t
 
 
 def test():

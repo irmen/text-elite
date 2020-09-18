@@ -36,7 +36,7 @@ commodities = [
 
 unitnames = ("t", "kg", "g")
 govnames = ("Anarchy", "Feudal", "Multi-gov", "Dictatorship", "Communist", "Confederacy", "Democracy", "Corporate State")
-econnames = ("Rich Ind", "Average Ind", "Poor Ind", "Mainly Ind", "Mainly Agri", "Rich Agri", "Average Agri", "Poor Agri");
+econnames = ("Rich Ind", "Average Ind", "Poor Ind", "Mainly Ind", "Mainly Agri", "Rich Agri", "Average Agri", "Poor Agri")
 
 
 class Market:
@@ -44,7 +44,7 @@ class Market:
         self.quantity = [0 for _ in commodities]
         self.price = [0 for _ in commodities]
 
-    def display(self, cargohold) -> None:
+    def display(self, cargohold: List[int]) -> None:
         for i in range(len(commodities)):
             print(commodities[i].name.ljust(20), end="")
             print("  %.1f" % (self.price[i] / 10.0), end="")
@@ -183,7 +183,7 @@ class Planet:
 
 class Galaxy:
     GALSIZE = 256
-    galaxy = []
+    galaxy: List[Planet] = []
     base0 = 0x5A4A
     base1 = 0x0248
     base2 = 0xB753  # Base seed for galaxy 1
@@ -193,7 +193,7 @@ class Galaxy:
     numforDiso = 147
     numforRied = 46
 
-    def __init__(self, galaxynum: int):
+    def __init__(self, galaxynum: int) -> None:
         # init seed for galaxy 1
         self.number = galaxynum
         self.seed = [self.base0, self.base1, self.base2]
@@ -202,7 +202,7 @@ class Galaxy:
         # Put galaxy data into array of structures
         self.galaxy = [self.makesystem() for _ in range(Galaxy.GALSIZE)]
 
-    def nextgalaxy(self):
+    def nextgalaxy(self) -> None:
         # Apply to base seed; once for galaxy 2
         # twice for galaxy 3, etc.
         # Eighth application gives galaxy 1 again
@@ -228,7 +228,7 @@ class Galaxy:
             thissys.economy = (thissys.economy | 2)
         thissys.techlev = ((self.seed[1] >> 8) & 3) + (thissys.economy ^ 7)
         thissys.techlev += thissys.govtype >> 1
-        if ((thissys.govtype) & 1) == 1:
+        if (thissys.govtype & 1) == 1:
             thissys.techlev += 1
         thissys.population = 4 * thissys.techlev + thissys.economy
         thissys.population += thissys.govtype + 1
@@ -301,20 +301,19 @@ class Galaxy:
 
     def matchsys(self, name: str, currentplanet: int) -> int:
         pnum = currentplanet
+        current = self.galaxy[currentplanet]
         if name:
             d = 9999
-            p = self.galaxy[currentplanet]
             for idx, planet in enumerate(self.galaxy):
                 if planet.name.lower().startswith(name.lower()):
-                    if self.distance(planet, p) < d:
-                        d = self.distance(planet, p)
-                        p = planet
+                    if self.distance(planet, current) < d:
+                        d = self.distance(planet, current)
                         pnum = idx
         return pnum
 
     def distance(self, a: Planet, b: Planet) -> int:
         # separation between two planets
-        return int(4 * sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) / 4))
+        return int(0.5 + 4.0 * sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) / 4.0))
 
 
 class Trader:
@@ -360,8 +359,8 @@ class Trader:
             print("Bad command", cmd)
 
     def do_buy(self, what: str) -> None:
-        goods, amount = what.split()
-        amount = int(amount)
+        goods, astr = what.split()
+        amount = int(astr)
         if amount == 0:
             amount = 1
         i = self.stringmatch(goods, self.tradnames)
@@ -377,8 +376,21 @@ class Trader:
             print(self.tradnames[i])
 
     def do_sell(self, what: str) -> None:
-        amount, goods = what.split()
-        raise NotImplementedError()     # TODO
+        goods, astr = what.split()
+        amount = int(astr)
+        if amount == 0:
+            amount = 1
+        i = self.stringmatch(goods, self.tradnames)
+        if i <= 0:
+            print("Unknown trade good")
+        else:
+            i -= 1
+            t = self.gamesell(i, amount)
+            if t == 0:
+                print("Can't sell any ", end="")
+            else:
+                print("Selling", t, unitnames[commodities[i].units], "of ", end="")
+            print(self.tradnames[i])
 
     def do_fuel(self, amount: str) -> None:
         # buy an amount of fuel
@@ -434,7 +446,7 @@ class Trader:
 
     def do_mkt(self, _) -> None:
         self.localmarket.display(self.shipshold)
-        print("\nFuel: %.1f" % (self.fuel/10.0), "      Holdspace :", self.holdspace, "t", end="");
+        print("\nFuel: %.1f" % (self.fuel/10.0), "      Holdspace :", self.holdspace, "t", end="")
 
     def do_info(self, name: str) -> None:
         planetnum = self.galax.matchsys(name, self.currentplanet)
@@ -475,8 +487,8 @@ class Trader:
         if f+self.fuel > self.maxfuel:
             f = self.maxfuel-self.fuel
         if self.fuelcost > 0:
-            if(f*self.fuelcost>self.cash):
-                f=int(self.cash/self.fuelcost)
+            if f*self.fuelcost > self.cash:
+                f = int(self.cash/self.fuelcost)
         self.fuel += f
         self.cash -= self.fuelcost * f
         return f
@@ -514,6 +526,15 @@ class Trader:
         self.cash -= t*self.localmarket.price[i]
         if commodities[i].units == 0:
             self.holdspace -= t
+        return t
+
+    def gamesell(self, i: int, a: int) -> int:
+        t = min(self.shipshold[i], a)
+        self.shipshold[i] -= t
+        self.localmarket.quantity[i] += t
+        if commodities[i].units == 0:
+            self.holdspace += t
+        self.cash += t * self.localmarket.price[i]
         return t
 
 

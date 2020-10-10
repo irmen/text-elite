@@ -36,7 +36,8 @@ commodities = [
 
 unitnames = ("t", "kg", "g")
 govnames = ("Anarchy", "Feudal", "Multi-gov", "Dictatorship", "Communist", "Confederacy", "Democracy", "Corporate State")
-econnames = ("Rich Ind", "Average Ind", "Poor Ind", "Mainly Ind", "Mainly Agri", "Rich Agri", "Average Agri", "Poor Agri")
+econnames = ("Rich Industrial", "Average Industrial", "Poor Industrial", "Mainly Industrial",
+             "Mainly Agricultural", "Rich Agricultural", "Average Agricultural", "Poor Agricultural")
 
 
 class Market:
@@ -93,7 +94,8 @@ class Planet:
         ("ice", "mud", "Zero-G", "vacuum", "\xB1 ultra"),
         ("hockey", "cricket", "karate", "polo", "tennis")
     ]
-    pairs0 = "ABOUSEITILETSTONLONUTHNOALLEXEGEZACEBISOUSESARMAINDIREA.ERATENBERALAVETIEDORQUANTEISRION"
+    # pairs0 = "ABOUSEITILETSTONLONUTHNOALLEXEGEZACEBISOUSESARMAINDIREA.ERATENBERALAVETIEDORQUANTEISRION"
+    pairs0 = "ABOUSEITILETSTONLONUTHNOALLEXEGEZACEBISOUSESARMAINDIREA.ERATENBE"
 
     def __init__(self):
         self.x = 0
@@ -107,6 +109,73 @@ class Planet:
         self.goatsoup_seed = (0, 0, 0, 0)
         self.goatsoup_rnd = [0, 0, 0, 0]
         self.name = ""
+        # TODO: species, read below:
+        """
+  Species type
+  ------------
+  The species type is either Human Colonials, or it's an alien species that
+  consists of up to three adjectives and a species name (so you can get
+  anything from "Rodents" and "Fierce Frogs" to "Black Fat Felines" and "Small
+  Yellow Bony Lobsters").
+  
+  As with the rest of the system data, the species is built from various bits
+  in the seeds. Specifically, all the bits in w2_hi are used, along with bits
+  0-2 of w0_hi and w1_hi, and bit 7 of w2_lo.
+  
+  First, we check bit 7 of w2_lo. If it is clear, print "Human Colonials" and
+  stop, otherwise this is an alien species, so we move onto the following
+  steps. (In the following steps, the potential range of the calculated value
+  of A is 0-7, and if a match isn't made, nothing is printed for that step.)
+  
+    1. Set A = bits 2-4 of w2_hi
+  
+      * If A = 0,  print "Large "
+      * If A = 1,  print "Fierce "
+      * If A = 2,  print "Small "
+  
+    2. Set A = bits 5-7 of w2_hi
+  
+      * If A = 0,  print "Green "
+      * If A = 1,  print "Red "
+      * If A = 2,  print "Yellow "
+      * If A = 3,  print "Blue "
+      * If A = 4,  print "Black "
+      * If A = 5,  print "Harmless "
+  
+    3. Set A = bits 0-2 of (w0_hi EOR w1_hi)
+  
+      * If A = 0,  print "Slimy "
+      * If A = 1,  print "Bug-Eyed "
+      * If A = 2,  print "Horned "
+      * If A = 3,  print "Bony "
+      * If A = 4,  print "Fat "
+      * If A = 5,  print "Furry "
+  
+    4. Add bits 0-1 of w2_hi to A from step 3, and take bits 0-2 of the result
+  
+      * If A = 0,  print "Rodents"
+      * If A = 1,  print "Frogs"
+      * If A = 2,  print "Lizards"
+      * If A = 3,  print "Lobsters"
+      * If A = 4,  print "Birds"
+      * If A = 5,  print "Humanoids"
+      * If A = 6,  print "Felines"
+      * If A = 7,  print "Insects"
+  
+  So if we print an adjective at step 3, then the only options for the species
+  name are from A to A + 3 (because we add a 2-bit number) in step 4. So only
+  certain combinations are possible:
+  
+    * Only rodents, frogs, lizards and lobsters can be slimy
+    * Only frogs, lizards, lobsters and birds can be bug-eyed
+    * Only lizards, lobsters, birds and humanoids can be horned
+    * Only lobsters, birds, humanoids and felines can be bony
+    * Only birds, humanoids, felines and insects can be fat
+    * Only humanoids, felines, insects and rodents can be furry
+  
+  So however hard you look, you will never find slimy humanoids, bony insects,
+  fat rodents or furry frogs, which is probably for the best.
+        """
 
     def gen_rnd_number(self) -> int:
         x: int = (self.goatsoup_rnd[0] * 2) & 0xFF
@@ -151,20 +220,26 @@ class Planet:
                                 result += nn
                             result += "ian"
                         elif c == '\xb2':
-                            # random name
-                            length = self.gen_rnd_number() & 3
-                            for i in range(length + 1):
-                                x = self.gen_rnd_number() & 0x3e
-                                if i == 0:
-                                    result += self.pairs0[x]
-                                else:
-                                    result += self.pairs0[x].lower()
-                                result += self.pairs0[x + 1].lower()
+                            result += self.random_name()
                         else:
                             raise ValueError("bad char data", c)
 
         soup("\x8F is \x97.")
         return result
+
+    def random_name(self) -> str:
+        name = ""
+        length = self.gen_rnd_number() & 3
+        for i in range(length + 1):
+            x = self.gen_rnd_number() & 0x3e
+            if self.pairs0[x] != '.':
+                if i == 0:
+                    name += self.pairs0[x]
+                else:
+                    name += self.pairs0[x].lower()
+            if self.pairs0[x+1] != '.':
+                name += self.pairs0[x + 1].lower()
+        return name
 
     def display(self, compressed: bool = False) -> None:
         if compressed:
@@ -183,7 +258,7 @@ class Planet:
 
 class Galaxy:
     GALSIZE = 256
-    galaxy: List[Planet] = []
+    galaxy: List[Planet]
     base0 = 0x5A4A
     base1 = 0x0248
     base2 = 0xB753  # Base seed for galaxy 1
@@ -193,14 +268,17 @@ class Galaxy:
     numforDiso = 147
     numforRied = 46
 
-    def __init__(self, galaxynum: int) -> None:
+    def __init__(self, galaxynum: int, createAllPlanets: bool = True) -> None:
         # init seed for galaxy 1
         self.number = galaxynum
         self.seed = [self.base0, self.base1, self.base2]
         for galcount in range(galaxynum - 1):
             self.nextgalaxy()
-        # Put galaxy data into array of structures
-        self.galaxy = [self.makesystem() for _ in range(Galaxy.GALSIZE)]
+        if createAllPlanets:
+            # Put galaxy data into array of structures
+            self.galaxy = [self.makesystem() for _ in range(Galaxy.GALSIZE)]
+        else:
+            self.galaxy = []
 
     def nextgalaxy(self) -> None:
         # Apply to base seed; once for galaxy 2
@@ -500,7 +578,8 @@ class Trader:
         self.parser("help")
         while True:
             print("\nCash: %.1f" % (self.cash / 10.0))
-            getcommand = input("> ")
+            print("> ", flush=True, end="")
+            getcommand = input()
             if len(getcommand) == 0:
                 break
             self.parser(getcommand)
@@ -561,9 +640,29 @@ def test():
     assert t.currentplanet == Galaxy.numforLave
     assert t.localmarket.quantity == market.quantity
     assert t.localmarket.price == market.price
+    # p = Planet()
+    # p.goatsoup_seed = (0x11, 0x22, 0x9e, 0xf1)
+    # p.goatsoup_rnd = list(p.goatsoup_seed)
+    # for i in range(20):
+    #     print(p.random_name())
+
+
+def testGG():
+    gg = Galaxy(1, createAllPlanets=False)
+    print("start!!!")
+    print("seed0=", hex(gg.seed[0]))
+    print("seed1=", hex(gg.seed[1]))
+    print("seed2=", hex(gg.seed[2]))
+    for i in range(Galaxy.numforLave+1):
+        planet = gg.makesystem()
+    print("seed0=", hex(gg.seed[0]))
+    print("seed1=", hex(gg.seed[1]))
+    print("seed2=", hex(gg.seed[2]))
+    print("goatseed=", planet.goatsoup_seed)
+    planet.display()
 
 
 if __name__ == "__main__":
-    test()
+    # testGG()
     t = Trader()
     t.mainloop()

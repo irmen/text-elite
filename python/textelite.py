@@ -30,7 +30,7 @@ commodities = [
     TradeGood(0x20, -0x01, 0x35, 0x03, 0, "Minerals"),
     TradeGood(0x61, -0x01, 0x42, 0x07, 1, "Gold"),
     TradeGood(0xAB, -0x02, 0x37, 0x1F, 1, "Platinum"),
-    TradeGood(0x2D, -0x01, 0xFA, 0x0F, 2, "Gem-Strones"),
+    TradeGood(0x2D, -0x01, 0xFA, 0x0F, 2, "Gem-Stones"),
     TradeGood(0x35, +0x0F, 0xC0, 0x07, 0, "Alien Items")
 ]
 
@@ -546,9 +546,9 @@ class Trader:
 
     def do_help(self, _) -> None:
         print("Commands are:")
-        print("Buy   tradegood ammount")
-        print("Sell  tradegood ammount")
-        print("Fuel  ammount    (buy ammount LY of fuel)")
+        print("Buy   tradegood amount")
+        print("Sell  tradegood amount")
+        print("Fuel  amount    (buy amount LY of fuel)")
         print("Jump  planetname (limited by fuel)")
         print("Sneak planetname (any distance - no fuel cost)")
         print("Galhyp           (jumps to next galaxy)")
@@ -591,7 +591,7 @@ class Trader:
         return 0
 
     def gamebuy(self, i: int, a: int) -> int:
-        # Try to buy ammount a  of good i  Return ammount bought
+        # Try to buy amount a  of good i  Return amount bought
         # Cannot buy more than is availble, can afford, or will fit in hold
         if self.cash < 0:
             t = 0
